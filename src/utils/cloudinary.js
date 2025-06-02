@@ -21,14 +21,21 @@ import fs from "fs"
                     resource_type: "auto"
                 }
             )
-            // file has been uploaded successfully
-            console.log("file is uploaded on cloudinary", response.url);
-            return response; //user ko send krdo
-            
-         } catch(error){
-            fs.unlinkSync(localFilePath) // remove the locally saved temporary file as the upload operation got failed
-            return null;
-         }
+            // File uploaded successfully, delete local file if it exists
+    if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+    }
+    return response;
+} catch (error) {
+    // Log error for debugging
+    console.error("Cloudinary upload error:", error);
+    // Delete local file if it exists to clean up
+    if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+    }
+    return null;
+}
+
     }
 
     
