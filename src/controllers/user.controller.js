@@ -4,6 +4,23 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
+//userId neche user instance se mil jaegi
+const generateAccessAndRefreshTokens = async(userId) => {
+    try {
+        const user = await User.findById(userId)
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
+
+        user.refreshToken = refreshToken
+        await user.save({ validateBeforeSave: false})
+
+        return {accessToken, refreshToken}
+        
+    } catch (error) {
+        throw new ApiError(500, "Something went wrong while generating refresh and access token")
+    }
+}
+
 const registerUser = asyncHandler(async(req,res) => {
      console.log("req.files:", req.files); 
     // get user details from frontend(postman ke through data le skte ho)
@@ -81,5 +98,88 @@ const registerUser = asyncHandler(async(req,res) => {
 
 })
 
+const loginUser = asyncHandler(async(req,res) => {
+    // req body -> data
+    // username or email
+    // find the user
+    // password check
+    // access and refresh token
+    // send cookie and response
 
-export { registerUser }
+    const {email, username, password } = req.body
+
+    if(!username || !email){
+        throw new ApiError(400, "username or email is required")
+    }
+
+    const user = await User.findOne({
+        $or: [{username}, {email}]  //find krega value ko yha toh woh username ke base ya email ke base pe mil jae
+    })
+    if(!user){
+        throw new ApiError(404, "User doesn't exist")
+    }
+
+    //findOne , updateOne ye sb jo method hai woh apke mongoDb ke through available hai, jo apne method bnya hai na isPassword Correct ,gernerate token vgra ye sb apke user mai available hai apka user upr wla hai jo apne db se wapas liya hai uska instance liya hai
+
+    const isPasswordValid = await user.isPasswordCorrect(password)
+
+    if(!isPasswordValid){
+        throw new ApiError(401, "Invlaid User Credentials")
+    }
+
+    const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id)
+
+    // ab user ko ky bhejna hai
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+
+    // cookies jb bhi bhjte tb hme kuch options design krne padte cookies ke,options kuch ni hote its just a object
+    const options = {
+        httpOnly: true,
+        secure : true //by default koi b modified kar sakta hai frontend se but by doing these ye cookies sirf server se modifiable hoti hai
+    }
+
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken, options)
+    .cookie("refreshToken",refreshToken, options)
+    .json(
+        new ApiResponse(
+            200,
+            {
+                user: loggedInUser, accessToken, refreshToken
+            },
+            "User logged In Successfully"
+        )
+    )
+})
+
+const logoutUser = asyncHandler(async(req,res) => {
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: undefined
+            }
+        },
+        {
+            new: true
+        }
+    )
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User looged Out"))
+})
+
+export {
+     registerUser,
+     loginUser,
+     logoutUser
+    }
