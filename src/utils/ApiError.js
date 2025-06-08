@@ -15,7 +15,7 @@ class ApiError extends Error {
         if(stack){
             this.stack = stack
         } else{
-            Error.captureStackTrace(this, this.constructor) //stat\ck trace ke andr hamne uska instance pss kar diya hai ki abhi kis context m baat kr rahe ho
+            Error.captureStackTrace(this, this.constructor) //stack trace ke andr hamne uska instance pss kar diya hai ki abhi kis context m baat kr rahe ho
         }
     }
 }
