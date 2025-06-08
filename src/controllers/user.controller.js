@@ -336,6 +336,157 @@ const updateUserCoverImage = asyncHandler(async(req,res) => {
     )
 })
 
+const getUserChannelProfile = asyncHandler(async(req,res) => {
+    const {username} = req.params //url se
+
+    if(!username){
+        throw new ApiError(400, "username is missing")
+    }
+
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase()  //phle hmne user ko match kara
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions", //uske bad hamne count kiya ki uske subscriber kitne hai channel ke through
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers" //jo name dena hai dedo
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions", //fir hamne count kiya ki apne kitno ko subscribe kr rkha hai uske susciber ke through
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+
+        // 3rd pipeline mai , original jo user object tha uske andr 2-3 field ar add krdi 
+        {
+            $addFields: {
+                subscribersCount: {
+                    $size: "$subscribers" //field hai isliye dollar
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        // project ky hota hai projection deta hai ki mai sarri value ko nahi project kruga wha pe jo bhi usko demand kar raha hai, mai usko selected cheeze dunga
+        {
+            $project: {
+                fullName: 1,
+                username: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1
+            }
+        }
+    ])
+
+    if(!channel?.length){
+        throw new ApiError(404, "channel does not exists")
+    }
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, channel[0], "user channel fetched successfully")
+    )
+})
+
+const getWatchHistory = asyncHandler(async(req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields:{
+                            owner:{
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(
+            200,
+            user[0].watchHistory,
+            "Watch history fetched successfully"
+        )
+    )
+})
+// const getWatchHistory = asyncHandler(async(req,res) => {
+//     // req.user._id //yha pe string mila hai ar usse string ko jb ham mongoose ke through usse krte hai find findById toh usko directly pass kar dete hai, mongoose actually mai bts mai sab kuch dekh leta hai;
+
+//     //ham user gye usme se watchHistory nikali, watchHistory nikal ke sarre document find karni thi, uske bad hamne dekha ki find toh kr liye lkin bhut sari document hai usmse se ek field jo owner wla hai, toh humne sub pipeline lgyi ky loopkup kr dena isse owner se wapas ana user pe ar sari values find kar dena
+
+//     const user = await User.aggregate([
+//         {
+//             $match: {
+//                 _id: new mongoose.Types.ObjectId(req.user._id)
+//             }
+//         },
+//         {
+//             $lookup: {
+//                 from: "videos",
+//                 localField: "watchHistory",
+//                 foreignField: "_id",
+//                 as: "watchHistory",
+//                 pipeline: [
+//                     {}
+//                 ]
+//             }
+//         }
+//     ])
+// })
 
 export {
      registerUser,
@@ -346,5 +497,7 @@ export {
      getCurrentUser,
      updateAccountDetails,
      updateUserAvatar,
-     updateUserCoverImage
+     updateUserCoverImage,
+     getUserChannelProfile,
+     getWatchHistory
     }
